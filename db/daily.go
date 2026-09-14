@@ -23,9 +23,28 @@ import (
 	"github.com/pagefaultgames/rogueserver/defs"
 )
 
+// TryAddDailyRun claims seed as today's daily-run seed, unless another
+// caller already has (date is dailyRuns' primary key) - either way, it
+// returns whichever seed actually ended up assigned to today's date.
+//
+// This used to be a single "INSERT ... ON DUPLICATE KEY UPDATE ... RETURNING
+// seed" statement, but RETURNING is a MariaDB-only extension that plain
+// MySQL (including 8.x, as used by managed providers like Aiven) rejects
+// with a syntax error (ER_PARSE_ERROR/1064). Splitting it into a plain
+// INSERT ... ON DUPLICATE KEY UPDATE (which both understand) followed by a
+// SELECT is portable to both, and equivalent: by the time the INSERT
+// returns, today's row is guaranteed to exist and be stable, since `date`
+// being the primary key means no other caller can be racing to create a
+// second, different row for the same date - only to resolve to that same
+// existing row via their own ON DUPLICATE KEY UPDATE.
 func (s *store) TryAddDailyRun(seed string) (string, error) {
+	_, err := handle.Exec("INSERT INTO dailyRuns (seed, date) VALUES (?, UTC_DATE()) ON DUPLICATE KEY UPDATE date = date", seed)
+	if err != nil {
+		return "", err
+	}
+
 	var actualSeed string
-	err := handle.QueryRow("INSERT INTO dailyRuns (seed, date) VALUES (?, UTC_DATE()) ON DUPLICATE KEY UPDATE date = date RETURNING seed", seed).Scan(&actualSeed)
+	err = handle.QueryRow("SELECT seed FROM dailyRuns WHERE date = UTC_DATE()").Scan(&actualSeed)
 	if err != nil {
 		return "", err
 	}
