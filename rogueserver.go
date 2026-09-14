@@ -36,7 +36,7 @@ func main() {
 	debug, _ := strconv.ParseBool(os.Getenv("debug"))
 
 	proto := getEnv("proto", "tcp")
-	addr := getEnv("addr", "0.0.0.0:8001")
+	addr := resolveAddr()
 	tlscert := getEnv("tlscert", "")
 	tlskey := getEnv("tlskey", "")
 
@@ -158,6 +158,16 @@ func debugHandler(router *http.ServeMux) http.Handler {
 
 		router.ServeHTTP(w, r)
 	})
+}
+
+// resolveAddr determines the address to listen on. An explicit "addr"
+// environment variable always wins. Otherwise, on platforms like Render
+// that assign a listen port via the PORT environment variable and route
+// external traffic to it, listen on 0.0.0.0 at that port - so deployments
+// there don't need to set addr explicitly. When neither is set, this keeps
+// the historical local/docker-compose default of 0.0.0.0:8001.
+func resolveAddr() string {
+	return getEnv("addr", "0.0.0.0:"+getEnv("PORT", "8001"))
 }
 
 func getEnv(key string, defaultValue string) string {

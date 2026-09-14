@@ -19,6 +19,7 @@ SPDX-License-Identifier: CC-BY-NC-SA-4.0
 - [Quickstart (Windows, Podman)](#quickstart-windows-podmandocker)
 - [Running without Podman/Docker](#running-without-podmandocker)
 - [Self Hosting](#self-hosting)
+- [Deploying to Render with a managed cloud database (e.g. Aiven MySQL)](#deploying-to-render-with-a-managed-cloud-database-eg-aiven-mysql)
 - [Podman/Docker Mini Primer](#podmandocker-mini-primer)
 
 ## Quickstart (Linux/WSL, Podman/Docker)
@@ -319,6 +320,44 @@ Make sure that both 8000 and 8001 are portforwarded on your router.
 
 Test that the server's game and game authentication works from other machines both in and outside of the network. Once this is complete, enjoy!
 
+
+## Deploying to Render with a managed cloud database (e.g. Aiven MySQL)
+
+This fork adds optional TLS support for connecting to a managed MySQL/MariaDB
+provider that requires it (Aiven, PlanetScale, etc.) and honors the `PORT`
+environment variable platforms like Render assign, so the server can run
+without installing MySQL/MariaDB locally at all.
+
+### New/changed environment variables
+
+| Variable | Required | Purpose |
+| --- | --- | --- |
+| `dbcacert` | No | Filesystem path to a PEM CA certificate. When set, the database connection uses TLS validated against this CA (see `db.Init` in [`db/db.go`](./db/db.go)). When unset, behavior is **unchanged** - a plain, non-TLS connection, exactly as before this fork's changes. Required for Aiven's project CA (see below). |
+| `PORT` | No | If `addr` is not explicitly set, the server listens on `0.0.0.0:$PORT` instead of the previous hardcoded `0.0.0.0:8001` - this is the environment variable Render (and similar platforms) assign automatically. Setting `addr` explicitly always takes precedence. |
+
+All other environment variables (`dbuser`, `dbpass`, `dbproto`, `dbaddr`, `dbname`, `gameurl`, `callbackurl`, `debug`, ...) are unchanged - see [`rogueserver.go`](./rogueserver.go).
+
+### Aiven MySQL
+
+Aiven enforces TLS-only connections using its own **project CA** by default
+(not a publicly-trusted one), so `dbcacert` must point at the CA certificate
+downloaded from the Aiven console (service page → Connection information →
+CA Certificate). On Render, upload that certificate as a **Secret File**
+(Environment → Secret Files) rather than committing it to this repository -
+Render mounts it into the running container at the path you choose, and
+`dbcacert` should be set to that same path.
+
+Never commit a real CA certificate, password, or any other Aiven connection
+detail to this repository, regardless of how this section is written -
+they belong only in Render's environment variables / Secret Files.
+
+### CORS in production
+
+`gameurl` (see [`rogueserver.go`](./rogueserver.go)) is used as-is for the
+`Access-Control-Allow-Origin` header - set it to your exact frontend origin
+(scheme + host, no trailing slash), e.g. `https://your-site.netlify.app`.
+Do **not** set `debug=true` in production: it switches CORS to allow every
+origin (`*`), which also disables the `gameurl` restriction entirely.
 
 ## Podman/Docker Mini Primer
 
