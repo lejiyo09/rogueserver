@@ -146,7 +146,7 @@ func prodHandler(router *http.ServeMux, clienturl string) http.Handler {
 	}
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
+		w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type, PKR-Client-Version")
 		w.Header().Set("Access-Control-Allow-Methods", "OPTIONS, GET, POST")
 		w.Header().Set("Access-Control-Allow-Origin", allowedOrigin(allowedOrigins, r.Header.Get("Origin")))
 

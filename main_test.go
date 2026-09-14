@@ -20,6 +20,7 @@ package main
 import (
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -102,6 +103,25 @@ func TestProdHandlerCORSHeaders(t *testing.T) {
 
 		if rec.Code != http.StatusOK {
 			t.Errorf("OPTIONS status = %d, want %d", rec.Code, http.StatusOK)
+		}
+	})
+
+	// Regression test: the client (src/api/api-base.ts) sends PKR-Client-Version
+	// on every request, which - being a non-"simple" header - triggers a CORS
+	// preflight. If this header isn't in Access-Control-Allow-Headers, the
+	// browser rejects the preflight before the actual request is ever sent,
+	// surfacing as "Failed to fetch" client-side with no request ever reaching
+	// this server's handlers.
+	t.Run("AllowsThePKRClientVersionHeaderTheClientAlwaysSends", func(t *testing.T) {
+		handler := prodHandler(mux, "https://pokerogue.net")
+
+		req := httptest.NewRequest(http.MethodOptions, "/ok", nil)
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+
+		got := rec.Header().Get("Access-Control-Allow-Headers")
+		if !strings.Contains(got, "PKR-Client-Version") {
+			t.Errorf("Access-Control-Allow-Headers = %q, want it to contain %q", got, "PKR-Client-Version")
 		}
 	})
 }
