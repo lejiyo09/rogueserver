@@ -24,6 +24,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 
 	"github.com/bwmarrin/discordgo"
 	"github.com/pagefaultgames/rogueserver/api"
@@ -130,11 +131,24 @@ func createListener(proto, addr string) (net.Listener, error) {
 	return listener, nil
 }
 
+// prodHandler serves the API with CORS headers scoped to the game client(s).
+// clienturl is normally a single origin (unchanged historical behavior: that
+// exact value is always sent back, regardless of the request's own Origin).
+// It may also be a comma-separated list of origins - e.g. to temporarily
+// allow a local file:// test page (Origin: null) alongside the real game
+// client - in which case the request's Origin is reflected back only when
+// it's one of the configured origins, so browsers only treat the response
+// as readable by origins the operator explicitly allowed.
 func prodHandler(router *http.ServeMux, clienturl string) http.Handler {
+	allowedOrigins := strings.Split(clienturl, ",")
+	for i := range allowedOrigins {
+		allowedOrigins[i] = strings.TrimSpace(allowedOrigins[i])
+	}
+
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
 		w.Header().Set("Access-Control-Allow-Methods", "OPTIONS, GET, POST")
-		w.Header().Set("Access-Control-Allow-Origin", clienturl)
+		w.Header().Set("Access-Control-Allow-Origin", allowedOrigin(allowedOrigins, r.Header.Get("Origin")))
 
 		if r.Method == "OPTIONS" {
 			w.WriteHeader(http.StatusOK)
@@ -143,6 +157,27 @@ func prodHandler(router *http.ServeMux, clienturl string) http.Handler {
 
 		router.ServeHTTP(w, r)
 	})
+}
+
+// allowedOrigin picks the Access-Control-Allow-Origin value for a request.
+// With a single configured origin (today's default for every existing
+// deployment), that origin is always returned, matching prior behavior
+// exactly. With more than one configured, the request's own Origin is
+// reflected back only if it's in the allow-list; otherwise the first
+// configured origin is returned (a browser will still reject reading the
+// response for a mismatched origin, same as before this change existed).
+func allowedOrigin(allowed []string, requestOrigin string) string {
+	if len(allowed) == 1 {
+		return allowed[0]
+	}
+
+	for _, origin := range allowed {
+		if origin == requestOrigin {
+			return origin
+		}
+	}
+
+	return allowed[0]
 }
 
 func debugHandler(router *http.ServeMux) http.Handler {

@@ -17,7 +17,94 @@
 
 package main
 
-import "testing"
+import (
+	"net/http"
+	"net/http/httptest"
+	"testing"
+)
+
+func TestAllowedOrigin(t *testing.T) {
+	t.Run("SingleConfiguredOriginAlwaysReturnedRegardlessOfRequest", func(t *testing.T) {
+		allowed := []string{"https://pokerogue.net"}
+
+		for _, requestOrigin := range []string{"https://pokerogue.net", "https://evil.example", "", "null"} {
+			got := allowedOrigin(allowed, requestOrigin)
+			want := "https://pokerogue.net"
+			if got != want {
+				t.Errorf("allowedOrigin(%v, %q) = %q, want %q", allowed, requestOrigin, got, want)
+			}
+		}
+	})
+
+	t.Run("MultipleConfiguredOriginsReflectMatchingRequestOrigin", func(t *testing.T) {
+		allowed := []string{"https://pokerogue.net", "null"}
+
+		got := allowedOrigin(allowed, "null")
+		want := "null"
+		if got != want {
+			t.Errorf("allowedOrigin(%v, %q) = %q, want %q", allowed, "null", got, want)
+		}
+	})
+
+	t.Run("MultipleConfiguredOriginsFallBackToFirstForUnknownOrigin", func(t *testing.T) {
+		allowed := []string{"https://pokerogue.net", "null"}
+
+		got := allowedOrigin(allowed, "https://evil.example")
+		want := "https://pokerogue.net"
+		if got != want {
+			t.Errorf("allowedOrigin(%v, %q) = %q, want %q", allowed, "https://evil.example", got, want)
+		}
+	})
+}
+
+func TestProdHandlerCORSHeaders(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/ok", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+
+	t.Run("SingleOriginConfigured_UnchangedHistoricalBehavior", func(t *testing.T) {
+		handler := prodHandler(mux, "https://pokerogue.net")
+
+		req := httptest.NewRequest(http.MethodGet, "/ok", nil)
+		req.Header.Set("Origin", "null")
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+
+		got := rec.Header().Get("Access-Control-Allow-Origin")
+		want := "https://pokerogue.net"
+		if got != want {
+			t.Errorf("Access-Control-Allow-Origin = %q, want %q", got, want)
+		}
+	})
+
+	t.Run("MultipleOriginsConfigured_ReflectsAllowedRequestOrigin", func(t *testing.T) {
+		handler := prodHandler(mux, "https://pokerogue.net, null")
+
+		req := httptest.NewRequest(http.MethodGet, "/ok", nil)
+		req.Header.Set("Origin", "null")
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+
+		got := rec.Header().Get("Access-Control-Allow-Origin")
+		want := "null"
+		if got != want {
+			t.Errorf("Access-Control-Allow-Origin = %q, want %q", got, want)
+		}
+	})
+
+	t.Run("OptionsPreflightIsHandledDirectly", func(t *testing.T) {
+		handler := prodHandler(mux, "https://pokerogue.net")
+
+		req := httptest.NewRequest(http.MethodOptions, "/ok", nil)
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Errorf("OPTIONS status = %d, want %d", rec.Code, http.StatusOK)
+		}
+	})
+}
 
 func TestResolveAddr(t *testing.T) {
 	t.Run("NeitherSet", func(t *testing.T) {

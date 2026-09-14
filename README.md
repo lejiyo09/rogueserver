@@ -353,11 +353,20 @@ they belong only in Render's environment variables / Secret Files.
 
 ### CORS in production
 
-`gameurl` (see [`rogueserver.go`](./rogueserver.go)) is used as-is for the
+`gameurl` (see [`rogueserver.go`](./rogueserver.go)) is used for the
 `Access-Control-Allow-Origin` header - set it to your exact frontend origin
 (scheme + host, no trailing slash), e.g. `https://your-site.netlify.app`.
 Do **not** set `debug=true` in production: it switches CORS to allow every
 origin (`*`), which also disables the `gameurl` restriction entirely.
+
+`gameurl` may also be a comma-separated list of origins (e.g.
+`https://your-site.netlify.app, null`), in which case a request's own
+`Origin` is reflected back only if it's in that list - useful for
+temporarily allowing a local `file://` test page (browsers send
+`Origin: null` for those) alongside the real game client without opening
+CORS to everyone. With only one origin configured (the default), behavior
+is unchanged: that origin is always returned. Remove any extra entries
+once you're done testing.
 
 ## Podman/Docker Mini Primer
 
