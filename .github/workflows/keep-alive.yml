@@ -1,0 +1,19 @@
+name: Keep rogueserver awake
+
+on:
+  schedule:
+    # Every 10 minutes - comfortably under Render's free-tier ~15 minute
+    # inactivity spin-down window, so the service never goes to sleep and
+    # the client never hits the 50+ second cold-start delay on a real
+    # request (e.g. login).
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping rogueserver
+        run: curl -fsS --max-time 20 https://pokerogue-api.onrender.com/game/titlestats
