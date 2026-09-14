@@ -24,6 +24,8 @@ import (
 	"database/sql"
 	"fmt"
 	"os"
+	"strings"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
@@ -44,6 +46,25 @@ var Store = &store{}
 // value used for the DSN's "tls" parameter when one is configured.
 const tlsConfigName = "custom"
 
+// connDialTimeout, connReadTimeout and connWriteTimeout bound how long the
+// mysql driver will wait on a connection attempt or a single I/O operation.
+// Without these, a connection that something between this server and the
+// database has silently dropped - which happens routinely for idle
+// connections crossing the public internet, e.g. between a Render web
+// service and a managed database like Aiven, without either side seeing a
+// TCP FIN/RST - hangs instead of failing. That hang can outlast the
+// platform's own request timeout, which then answers with its own error
+// page instead of this server's ever being reached - one with none of this
+// server's CORS headers, which surfaces to a browser as a CORS failure
+// instead of the ordinary DB error it actually is. Bounding it here makes
+// a dead connection fail fast, as a normal Go error handled (and given
+// CORS headers) the same way any other database error already is.
+const (
+	connDialTimeout  = "5s"
+	connReadTimeout  = "10s"
+	connWriteTimeout = "5s"
+)
+
 // buildDSN assembles the go-sql-driver/mysql DSN used to open the database
 // connection. When tlsConfigKey is non-empty, a "tls" parameter referencing
 // a config previously registered via mysql.RegisterTLSConfig is appended -
@@ -51,10 +72,17 @@ const tlsConfigName = "custom"
 // unit-tested without touching global mysql driver state.
 func buildDSN(username, password, protocol, address, database, tlsConfigKey string) string {
 	dsn := username + ":" + password + "@" + protocol + "(" + address + ")/" + database
-	if tlsConfigKey != "" {
-		dsn += "?tls=" + tlsConfigKey
+
+	params := []string{
+		"timeout=" + connDialTimeout,
+		"readTimeout=" + connReadTimeout,
+		"writeTimeout=" + connWriteTimeout,
 	}
-	return dsn
+	if tlsConfigKey != "" {
+		params = append(params, "tls="+tlsConfigKey)
+	}
+
+	return dsn + "?" + strings.Join(params, "&")
 }
 
 // loadCACertPool reads a PEM-encoded CA certificate (or bundle) from
@@ -106,6 +134,18 @@ func Init(username, password, protocol, address, database string) error {
 	if err != nil {
 		return fmt.Errorf("failed to open database connection: %s", err)
 	}
+
+	// Recycle connections well before any silent middlebox/provider idle
+	// timeout (commonly 5-15 minutes for a connection crossing the public
+	// internet) has a chance to drop one from under us, and cap pool size
+	// to stay comfortably within a free-tier managed database's connection
+	// limit. See connDialTimeout et al. above for the complementary fix -
+	// bounding how long a single operation can hang on a connection that
+	// went stale anyway.
+	handle.SetConnMaxLifetime(3 * time.Minute)
+	handle.SetConnMaxIdleTime(1 * time.Minute)
+	handle.SetMaxOpenConns(10)
+	handle.SetMaxIdleConns(5)
 
 	if os.Getenv("AWS_ENDPOINT_URL_S3") != "" {
 		cfg, err := config.LoadDefaultConfig(context.TODO())

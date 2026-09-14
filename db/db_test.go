@@ -33,7 +33,8 @@ import (
 func TestBuildDSN(t *testing.T) {
 	t.Run("WithoutTLS", func(t *testing.T) {
 		got := buildDSN("user", "pass", "tcp", "localhost:3306", "mydb", "")
-		want := "user:pass@tcp(localhost:3306)/mydb"
+		want := "user:pass@tcp(localhost:3306)/mydb?timeout=" + connDialTimeout +
+			"&readTimeout=" + connReadTimeout + "&writeTimeout=" + connWriteTimeout
 		if got != want {
 			t.Errorf("buildDSN() = %q, want %q", got, want)
 		}
@@ -41,7 +42,8 @@ func TestBuildDSN(t *testing.T) {
 
 	t.Run("WithTLS", func(t *testing.T) {
 		got := buildDSN("avnadmin", "secret", "tcp", "mysql-example.aivencloud.com:22671", "defaultdb", tlsConfigName)
-		want := "avnadmin:secret@tcp(mysql-example.aivencloud.com:22671)/defaultdb?tls=" + tlsConfigName
+		want := "avnadmin:secret@tcp(mysql-example.aivencloud.com:22671)/defaultdb?timeout=" + connDialTimeout +
+			"&readTimeout=" + connReadTimeout + "&writeTimeout=" + connWriteTimeout + "&tls=" + tlsConfigName
 		if got != want {
 			t.Errorf("buildDSN() = %q, want %q", got, want)
 		}
