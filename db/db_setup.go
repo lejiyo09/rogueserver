@@ -27,6 +27,58 @@ func MaybeSetupDb(db *sql.DB) error {
 	return nil
 }
 
+// index describes a single non-unique index that setupDb ensures exists.
+// Kept separate from the CREATE TABLE statements below because MySQL's
+// CREATE INDEX (unlike MariaDB's) has no IF NOT EXISTS form - see
+// createIndexIfNotExists, which achieves the same idempotency portably
+// (MySQL and MariaDB alike) via information_schema instead.
+type index struct {
+	name    string
+	table   string
+	columns string
+}
+
+var indexes = []index{
+	{"accountsByActivity", "accounts", "lastActivity"},
+	{"sessionsByUuid", "sessions", "uuid"},
+	{"dailyRunsByDateAndSeed", "dailyRuns", "date, seed"},
+	{"dailyRunCompletionsByUuidAndSeed", "dailyRunCompletions", "uuid, seed"},
+	{"accountDailyRunsByDate", "accountDailyRuns", "date"},
+}
+
+// createIndexIfNotExists creates the named index only if it doesn't already
+// exist, checked via information_schema.statistics rather than "CREATE INDEX
+// IF NOT EXISTS" (MariaDB-only syntax; plain MySQL, including 8.4, rejects it
+// with a syntax error - ER_PARSE_ERROR/1064). This makes index creation
+// idempotent - safe to run on every startup, including against a database
+// that already has the index - on both MySQL and MariaDB.
+func createIndexIfNotExists(tx *sql.Tx, idx index) error {
+	var count int
+	err := tx.QueryRow(
+		`SELECT COUNT(*) FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = ? AND index_name = ?`,
+		idx.table, idx.name,
+	).Scan(&count)
+	if err != nil {
+		return fmt.Errorf("failed to check for existing index %s: %w", idx.name, err)
+	}
+	if count > 0 {
+		return nil
+	}
+
+	_, err = tx.Exec(createIndexSQL(idx))
+	if err != nil {
+		return fmt.Errorf("failed to create index %s: %w", idx.name, err)
+	}
+	return nil
+}
+
+// createIndexSQL builds the (plain, no IF NOT EXISTS) CREATE INDEX statement
+// for idx. Split out from createIndexIfNotExists so it can be unit-tested
+// without a database connection.
+func createIndexSQL(idx index) string {
+	return fmt.Sprintf("CREATE INDEX %s ON %s (%s)", idx.name, idx.table, idx.columns)
+}
+
 func setupDb(tx *sql.Tx) error {
 	queries := []string{
 		`CREATE TABLE IF NOT EXISTS accounts (
@@ -43,7 +95,6 @@ func setupDb(tx *sql.Tx) error {
 		       discordId VARCHAR(32) UNIQUE DEFAULT NULL,
 		       googleId VARCHAR(32) UNIQUE DEFAULT NULL
 	       )`,
-		`CREATE INDEX IF NOT EXISTS accountsByActivity ON accounts (lastActivity)`,
 
 		`CREATE TABLE IF NOT EXISTS sessions (
 		       token BINARY(32) NOT NULL PRIMARY KEY,
@@ -51,7 +102,6 @@ func setupDb(tx *sql.Tx) error {
 		       expire TIMESTAMP DEFAULT NULL,
 		       CONSTRAINT sessions_ibfk_1 FOREIGN KEY (uuid) REFERENCES accounts (uuid) ON DELETE CASCADE ON UPDATE CASCADE
 	       )`,
-		`CREATE INDEX IF NOT EXISTS sessionsByUuid ON sessions (uuid)`,
 
 		`CREATE TABLE IF NOT EXISTS accountStats (
 		       uuid BINARY(16) NOT NULL PRIMARY KEY,
@@ -77,7 +127,6 @@ func setupDb(tx *sql.Tx) error {
 		       date DATE NOT NULL PRIMARY KEY,
 		       seed CHAR(24) CHARACTER SET ascii COLLATE ascii_bin NOT NULL
 	       )`,
-		`CREATE INDEX IF NOT EXISTS dailyRunsByDateAndSeed ON dailyRuns (date, seed)`,
 
 		`CREATE TABLE IF NOT EXISTS dailyRunCompletions (
 		       uuid BINARY(16) NOT NULL,
@@ -88,7 +137,6 @@ func setupDb(tx *sql.Tx) error {
 		       PRIMARY KEY (uuid, seed),
 		       CONSTRAINT dailyRunCompletions_ibfk_1 FOREIGN KEY (uuid) REFERENCES accounts (uuid) ON DELETE CASCADE ON UPDATE CASCADE
 	       )`,
-		`CREATE INDEX IF NOT EXISTS dailyRunCompletionsByUuidAndSeed ON dailyRunCompletions (uuid, seed)`,
 
 		`CREATE TABLE IF NOT EXISTS accountDailyRuns (
 		       uuid BINARY(16) NOT NULL,
@@ -100,7 +148,6 @@ func setupDb(tx *sql.Tx) error {
 		       CONSTRAINT accountDailyRuns_ibfk_1 FOREIGN KEY (uuid) REFERENCES accounts (uuid) ON DELETE CASCADE ON UPDATE CASCADE,
 		       CONSTRAINT accountDailyRuns_ibfk_2 FOREIGN KEY (date) REFERENCES dailyRuns (date) ON DELETE NO ACTION ON UPDATE NO ACTION
 	       )`,
-		`CREATE INDEX IF NOT EXISTS accountDailyRunsByDate ON accountDailyRuns (date)`,
 
 		`CREATE TABLE IF NOT EXISTS sessionSaveData (
 		       uuid BINARY(16),
@@ -132,6 +179,15 @@ func setupDb(tx *sql.Tx) error {
 		_, err := tx.Exec(q)
 		if err != nil {
 			return fmt.Errorf("failed to execute query: %w, query: %s", err, q)
+		}
+	}
+
+	// Indexes are created separately from the tables above - see
+	// createIndexIfNotExists for why (MySQL's CREATE INDEX has no
+	// IF NOT EXISTS form, unlike MariaDB's).
+	for _, idx := range indexes {
+		if err := createIndexIfNotExists(tx, idx); err != nil {
+			return err
 		}
 	}
 
