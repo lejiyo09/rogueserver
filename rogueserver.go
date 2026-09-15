@@ -25,12 +25,33 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/bwmarrin/discordgo"
 	"github.com/pagefaultgames/rogueserver/api"
 	"github.com/pagefaultgames/rogueserver/api/account"
 	"github.com/pagefaultgames/rogueserver/db"
 )
+
+// Bounds how long a connection may take to send headers/body or receive a
+// response, and how long an idle keep-alive connection is held open. Without
+// these, http.Serve/http.ServeTLS construct a server with no timeouts at
+// all, so a slow or stalled client can hold a connection (and its goroutine)
+// open indefinitely - a classic Slowloris-style resource exhaustion.
+const (
+	readHeaderTimeout = 10 * time.Second
+	readTimeout       = 30 * time.Second
+	writeTimeout      = 30 * time.Second
+	idleTimeout       = 120 * time.Second
+)
+
+// maxRequestBodyBytes caps how much of a request body any handler will read.
+// No handler currently limits this itself (they all call
+// json.NewDecoder(r.Body).Decode directly), so without this an oversized
+// body - malicious or not - is fully buffered/decoded into memory. 8 MiB is
+// comfortably above any legitimate save-data payload (gob+zstd-compressed
+// session/system blobs are well under 1 MiB in practice).
+const maxRequestBodyBytes = 8 << 20 // 8 MiB
 
 func main() {
 	// env stuff
@@ -107,10 +128,18 @@ func main() {
 		handler = debugHandler(mux)
 	}
 
+	server := &http.Server{
+		Handler:           handler,
+		ReadHeaderTimeout: readHeaderTimeout,
+		ReadTimeout:       readTimeout,
+		WriteTimeout:      writeTimeout,
+		IdleTimeout:       idleTimeout,
+	}
+
 	if tlscert == "" {
-		err = http.Serve(listener, handler)
+		err = server.Serve(listener)
 	} else {
-		err = http.ServeTLS(listener, handler, tlscert, tlskey)
+		err = server.ServeTLS(listener, tlscert, tlskey)
 	}
 	if err != nil {
 		log.Fatalf("failed to create http server or server errored: %s", err)
@@ -161,6 +190,7 @@ func prodHandler(router *http.ServeMux, clienturl string) http.Handler {
 			return
 		}
 
+		r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
 		router.ServeHTTP(w, r)
 	})
 }
@@ -197,6 +227,7 @@ func debugHandler(router *http.ServeMux) http.Handler {
 			return
 		}
 
+		r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
 		router.ServeHTTP(w, r)
 	})
 }

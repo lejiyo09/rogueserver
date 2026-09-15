@@ -18,30 +18,49 @@
 package api
 
 import (
+	"sync/atomic"
 	"time"
 
 	"github.com/robfig/cron/v3"
 )
 
+// playerCount, battleCount, and classicSessionCount are written from the
+// cron scheduler's goroutine (below) and read concurrently from HTTP handler
+// goroutines (handleGameTitleStats, handleGameClassicSessionCount in
+// endpoints.go) - every net/http request runs in its own goroutine, so a
+// plain int here would be a data race. atomic.Int64 makes each read/write a
+// single atomic operation with no risk of a torn/stale value.
 var (
 	scheduler           = cron.New(cron.WithLocation(time.UTC))
-	playerCount         int
-	battleCount         int
-	classicSessionCount int
+	playerCount         atomic.Int64
+	battleCount         atomic.Int64
+	classicSessionCount atomic.Int64
 )
 
 func scheduleStatRefresh[T updateStatsStore](store T) error {
-	_, err := scheduler.AddFunc("@every 1m", func() { playerCount, _ = store.FetchPlayerCount() })
+	_, err := scheduler.AddFunc("@every 1m", func() {
+		if count, err := store.FetchPlayerCount(); err == nil {
+			playerCount.Store(int64(count))
+		}
+	})
 	if err != nil {
 		return err
 	}
 
-	_, err = scheduler.AddFunc("@every 1h", func() { battleCount, _ = store.FetchBattleCount() })
+	_, err = scheduler.AddFunc("@every 1h", func() {
+		if count, err := store.FetchBattleCount(); err == nil {
+			battleCount.Store(int64(count))
+		}
+	})
 	if err != nil {
 		return err
 	}
 
-	_, err = scheduler.AddFunc("@every 1h", func() { classicSessionCount, _ = store.FetchClassicSessionCount() })
+	_, err = scheduler.AddFunc("@every 1h", func() {
+		if count, err := store.FetchClassicSessionCount(); err == nil {
+			classicSessionCount.Store(int64(count))
+		}
+	})
 	if err != nil {
 		return err
 	}

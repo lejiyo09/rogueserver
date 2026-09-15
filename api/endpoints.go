@@ -235,15 +235,15 @@ func handleAccountLogout(w http.ResponseWriter, r *http.Request) {
 // game
 func handleGameTitleStats(w http.ResponseWriter, r *http.Request) {
 	stats := defs.TitleStats{
-		PlayerCount: playerCount,
-		BattleCount: battleCount,
+		PlayerCount: int(playerCount.Load()),
+		BattleCount: int(battleCount.Load()),
 	}
 
 	writeJSON(w, r, stats)
 }
 
 func handleGameClassicSessionCount(w http.ResponseWriter, r *http.Request) {
-	fmt.Fprint(w, classicSessionCount)
+	fmt.Fprint(w, classicSessionCount.Load())
 }
 
 func handleSession(w http.ResponseWriter, r *http.Request) {
