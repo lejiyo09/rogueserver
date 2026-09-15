@@ -60,7 +60,13 @@ func main() {
 	discordbottoken := getEnv("discordbottoken", "")
 	discordguildid := getEnv("discordguildid", "")
 
+	// The Firebase project ID sign-in via Google is verified against (see
+	// api/account/firebase.go) - the "projectId" field of the client's own
+	// firebaseConfig. Login via Google is rejected while this is unset.
+	firebaseProjectId := getEnv("firebaseProjectId", "")
+
 	account.GameURL = gameurl
+	account.FirebaseProjectID = firebaseProjectId
 
 	account.DiscordClientID = discordclientid
 	account.DiscordClientSecret = discordsecretid

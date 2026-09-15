@@ -340,6 +340,25 @@ func (s *store) AddAccountRecord(uuid []byte, username string, key, salt []byte)
 	return nil
 }
 
+func (s *store) FetchUsernameByFirebaseUid(firebaseUid string) (string, error) {
+	var username string
+	err := handle.QueryRow("SELECT username FROM accounts WHERE firebaseUid = ?", firebaseUid).Scan(&username)
+	if err != nil {
+		return "", err
+	}
+
+	return username, nil
+}
+
+func (s *store) AddFirebaseAccountRecord(uuid []byte, username string, key, salt []byte, firebaseUid string) error {
+	_, err := handle.Exec("INSERT INTO accounts (uuid, username, hash, salt, firebaseUid, registered) VALUES (?, ?, ?, ?, ?, UTC_TIMESTAMP())", uuid, username, key, salt, firebaseUid)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func (s *store) FetchTrainerIds(uuid []byte) (trainerId, secretId int, err error) {
 	err = handle.QueryRow("SELECT trainerId, secretId FROM accounts WHERE uuid = ?", uuid).Scan(&trainerId, &secretId)
 	if err != nil {

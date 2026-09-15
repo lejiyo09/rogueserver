@@ -50,6 +50,20 @@ func TestIndexesAreWellFormed(t *testing.T) {
 	}
 }
 
+func TestColumnsAreWellFormed(t *testing.T) {
+	seen := make(map[string]bool)
+	for _, col := range columns {
+		if col.name == "" || col.table == "" || col.definition == "" {
+			t.Errorf("column %+v has an empty field", col)
+		}
+		key := col.table + "." + col.name
+		if seen[key] {
+			t.Errorf("duplicate column definition for %s", key)
+		}
+		seen[key] = true
+	}
+}
+
 // testDSN points at a local MySQL/MariaDB instance for the integration test
 // below. It's only used if reachable - see openTestDB - so `go test ./...`
 // stays safe to run in environments without a local database (e.g. CI).
@@ -137,5 +151,62 @@ func TestSetupDbIdempotent(t *testing.T) {
 
 	if err := runSetup(); err != nil {
 		t.Fatalf("second setupDb() run (simulated redeploy, everything already exists) failed: %s", err)
+	}
+}
+
+// TestSetupDbAddsMissingColumnToExistingTable simulates the real-world case
+// this migration path exists for: a database deployed before firebaseUid
+// existed, whose accounts table CREATE TABLE IF NOT EXISTS therefore never
+// runs again (the table already exists) - only addColumnIfNotExists can add
+// the new column there.
+func TestSetupDbAddsMissingColumnToExistingTable(t *testing.T) {
+	handle := openTestDB(t)
+	defer handle.Close()
+
+	dropAllTestTables(t, handle)
+	defer dropAllTestTables(t, handle)
+
+	// A minimal stand-in for the pre-firebaseUid accounts table - only what's
+	// needed to exist for setupDb's CREATE TABLE IF NOT EXISTS to no-op and
+	// for the column check that follows to be meaningful.
+	_, err := handle.Exec(`CREATE TABLE accounts (
+		uuid BINARY(16) NOT NULL PRIMARY KEY,
+		username VARCHAR(16) UNIQUE NOT NULL,
+		hash BINARY(32) NOT NULL,
+		salt BINARY(16) NOT NULL,
+		registered TIMESTAMP NOT NULL,
+		lastLoggedIn TIMESTAMP DEFAULT NULL,
+		lastActivity TIMESTAMP DEFAULT NULL,
+		banned TINYINT(1) NOT NULL DEFAULT 0,
+		trainerId SMALLINT(5) UNSIGNED DEFAULT 0,
+		secretId SMALLINT(5) UNSIGNED DEFAULT 0,
+		discordId VARCHAR(32) UNIQUE DEFAULT NULL,
+		googleId VARCHAR(32) UNIQUE DEFAULT NULL
+	)`)
+	if err != nil {
+		t.Fatalf("failed to create legacy-shaped accounts table: %s", err)
+	}
+
+	tx, err := handle.Begin()
+	if err != nil {
+		t.Fatalf("failed to begin transaction: %s", err)
+	}
+	if err := setupDb(tx); err != nil {
+		tx.Rollback()
+		t.Fatalf("setupDb() against a pre-existing table missing firebaseUid failed: %s", err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatalf("failed to commit: %s", err)
+	}
+
+	var count int
+	err = handle.QueryRow(
+		`SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'accounts' AND column_name = 'firebaseUid'`,
+	).Scan(&count)
+	if err != nil {
+		t.Fatalf("failed to verify firebaseUid column: %s", err)
+	}
+	if count == 0 {
+		t.Error("firebaseUid column was not added to a pre-existing accounts table")
 	}
 }

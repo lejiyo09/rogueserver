@@ -174,20 +174,25 @@ func handleAccountInfo(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, r, response)
 }
 
-func handleAccountRegister(w http.ResponseWriter, r *http.Request) {
-	err := account.Register(db.Store, r.PostFormValue("username"), r.PostFormValue("password"))
-	if err != nil {
-		httpError(w, r, err, http.StatusInternalServerError)
-		return
-	}
+// ErrPasswordAuthDisabled is returned by every password-based account
+// endpoint: this server only accepts login via a school Google account
+// (see handleAccountLoginGoogle). Kept as handlers that answer this error
+// rather than removed mux routes, so a stale client gets a clear rejection
+// instead of a generic 404.
+var ErrPasswordAuthDisabled = errors.New("password-based accounts are disabled; sign in with your school Google account instead")
 
-	w.WriteHeader(http.StatusOK)
+func handleAccountRegister(w http.ResponseWriter, r *http.Request) {
+	httpError(w, r, ErrPasswordAuthDisabled, http.StatusForbidden)
 }
 
 func handleAccountLogin(w http.ResponseWriter, r *http.Request) {
-	response, err := account.Login(db.Store, r.PostFormValue("username"), r.PostFormValue("password"))
+	httpError(w, r, ErrPasswordAuthDisabled, http.StatusForbidden)
+}
+
+func handleAccountLoginGoogle(w http.ResponseWriter, r *http.Request) {
+	response, err := account.LoginWithGoogle(db.Store, r.PostFormValue("idToken"))
 	if err != nil {
-		httpError(w, r, err, http.StatusInternalServerError)
+		httpError(w, r, err, http.StatusUnauthorized)
 		return
 	}
 
@@ -195,32 +200,7 @@ func handleAccountLogin(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleAccountChangePW(w http.ResponseWriter, r *http.Request) {
-	uuid, err := uuidFromRequest(r)
-	if err != nil {
-		httpError(w, r, err, http.StatusUnauthorized)
-		return
-	}
-
-	err = account.ChangePW(db.Store, uuid, r.PostFormValue("password"))
-	if err != nil {
-		httpError(w, r, err, http.StatusInternalServerError)
-		return
-	}
-
-	username, err := db.Store.FetchUsernameFromUUID(uuid)
-	if err != nil {
-		httpError(w, r, err, http.StatusInternalServerError)
-		return
-	}
-
-	// create a new session with these credentials
-	response, err := account.Login(db.Store, username, r.Form.Get("password"))
-	if err != nil {
-		httpError(w, r, err, http.StatusInternalServerError)
-		return
-	}
-
-	writeJSON(w, r, response)
+	httpError(w, r, ErrPasswordAuthDisabled, http.StatusForbidden)
 }
 
 func handleAccountLogout(w http.ResponseWriter, r *http.Request) {
@@ -678,7 +658,8 @@ func handleProviderCallback(w http.ResponseWriter, r *http.Request) {
 	var err error
 	switch provider {
 	case "discord":
-		externalAuthId, err = account.Discord.HandleDiscordCallback(w, r)
+		httpError(w, r, errors.New("Discord sign-in is disabled; sign in with your school Google account instead"), http.StatusForbidden)
+		return
 	case "google":
 		externalAuthId, err = account.Google.HandleGoogleCallback(w, r)
 	default:

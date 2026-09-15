@@ -79,6 +79,43 @@ func createIndexSQL(idx index) string {
 	return fmt.Sprintf("CREATE INDEX %s ON %s (%s)", idx.name, idx.table, idx.columns)
 }
 
+// column describes a single column setupDb ensures exists on an
+// already-created table, for columns added after a table's original
+// CREATE TABLE statement (that statement still creates it directly for a
+// brand-new database) - MySQL has no "ADD COLUMN IF NOT EXISTS" form, so
+// existence is checked via information_schema instead, same approach as
+// createIndexIfNotExists.
+type column struct {
+	name, table, definition string
+}
+
+var columns = []column{
+	{"firebaseUid", "accounts", "VARCHAR(32) UNIQUE DEFAULT NULL"},
+}
+
+// addColumnIfNotExists adds the named column only if it doesn't already
+// exist, so it's safe to run on every startup, including against a database
+// that already has it.
+func addColumnIfNotExists(tx *sql.Tx, col column) error {
+	var count int
+	err := tx.QueryRow(
+		`SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = ? AND column_name = ?`,
+		col.table, col.name,
+	).Scan(&count)
+	if err != nil {
+		return fmt.Errorf("failed to check for existing column %s: %w", col.name, err)
+	}
+	if count > 0 {
+		return nil
+	}
+
+	_, err = tx.Exec(fmt.Sprintf("ALTER TABLE %s ADD COLUMN %s %s", col.table, col.name, col.definition))
+	if err != nil {
+		return fmt.Errorf("failed to add column %s: %w", col.name, err)
+	}
+	return nil
+}
+
 func setupDb(tx *sql.Tx) error {
 	queries := []string{
 		`CREATE TABLE IF NOT EXISTS accounts (
@@ -93,7 +130,8 @@ func setupDb(tx *sql.Tx) error {
 		       trainerId SMALLINT(5) UNSIGNED DEFAULT 0,
 		       secretId SMALLINT(5) UNSIGNED DEFAULT 0,
 		       discordId VARCHAR(32) UNIQUE DEFAULT NULL,
-		       googleId VARCHAR(32) UNIQUE DEFAULT NULL
+		       googleId VARCHAR(32) UNIQUE DEFAULT NULL,
+		       firebaseUid VARCHAR(32) UNIQUE DEFAULT NULL
 	       )`,
 
 		`CREATE TABLE IF NOT EXISTS sessions (
@@ -179,6 +217,15 @@ func setupDb(tx *sql.Tx) error {
 		_, err := tx.Exec(q)
 		if err != nil {
 			return fmt.Errorf("failed to execute query: %w, query: %s", err, q)
+		}
+	}
+
+	// Columns added after a table's original CREATE TABLE statement (see
+	// addColumnIfNotExists) are applied next, before indexes, since an
+	// index may reference one of them.
+	for _, col := range columns {
+		if err := addColumnIfNotExists(tx, col); err != nil {
+			return err
 		}
 	}
 
