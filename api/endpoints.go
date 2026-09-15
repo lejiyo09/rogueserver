@@ -174,12 +174,13 @@ func handleAccountInfo(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, r, response)
 }
 
-// ErrPasswordAuthDisabled is returned by every password-based account
-// endpoint: this server only accepts login via a school Google account
-// (see handleAccountLoginGoogle). Kept as handlers that answer this error
-// rather than removed mux routes, so a stale client gets a clear rejection
-// instead of a generic 404.
-var ErrPasswordAuthDisabled = errors.New("password-based accounts are disabled; sign in with your school Google account instead")
+// ErrPasswordAuthDisabled is returned by every account endpoint that used
+// to authenticate directly against this server's own Argon2ID-hashed
+// passwords: this server now only accepts login via a school email account
+// verified through Firebase (see handleAccountLoginFirebase). Kept as
+// handlers that answer this error rather than removed mux routes, so a
+// stale client gets a clear rejection instead of a generic 404.
+var ErrPasswordAuthDisabled = errors.New("this endpoint is disabled; sign in with your school email account instead")
 
 func handleAccountRegister(w http.ResponseWriter, r *http.Request) {
 	httpError(w, r, ErrPasswordAuthDisabled, http.StatusForbidden)
@@ -189,8 +190,13 @@ func handleAccountLogin(w http.ResponseWriter, r *http.Request) {
 	httpError(w, r, ErrPasswordAuthDisabled, http.StatusForbidden)
 }
 
-func handleAccountLoginGoogle(w http.ResponseWriter, r *http.Request) {
-	response, err := account.LoginWithGoogle(db.Store, r.PostFormValue("idToken"))
+// handleAccountLoginFirebase verifies a Firebase ID token (from the
+// client's createUserWithEmailAndPassword/signInWithEmailAndPassword) and
+// logs into or registers the corresponding account - see LoginWithFirebase.
+// nickname is only used - and required - the first time a given Firebase
+// account is seen.
+func handleAccountLoginFirebase(w http.ResponseWriter, r *http.Request) {
+	response, err := account.LoginWithFirebase(db.Store, r.PostFormValue("idToken"), r.PostFormValue("nickname"))
 	if err != nil {
 		httpError(w, r, err, http.StatusUnauthorized)
 		return
@@ -658,7 +664,7 @@ func handleProviderCallback(w http.ResponseWriter, r *http.Request) {
 	var err error
 	switch provider {
 	case "discord":
-		httpError(w, r, errors.New("Discord sign-in is disabled; sign in with your school Google account instead"), http.StatusForbidden)
+		httpError(w, r, errors.New("Discord sign-in is disabled; sign in with your school email account instead"), http.StatusForbidden)
 		return
 	case "google":
 		externalAuthId, err = account.Google.HandleGoogleCallback(w, r)

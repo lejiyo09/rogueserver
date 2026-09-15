@@ -34,14 +34,16 @@ import (
 
 // FirebaseProjectID is the Firebase project this server accepts ID tokens
 // for (the "projectId" field of the client's firebaseConfig). Login via
-// Google is disabled (VerifyFirebaseIDToken always fails) while this is empty.
+// Firebase is disabled (VerifyFirebaseIDToken always fails) while this is empty.
 var FirebaseProjectID string
 
-// allowedSchoolEmail restricts sign-in to this school's Google accounts, in
-// the form <4-digit year><4-digit id>@hanilgo.cnehs.kr (e.g.
-// 20260001@hanilgo.cnehs.kr) - a token for any other Google account,
-// including a real hanilgo.cnehs.kr account with a different local-part
-// shape, is rejected.
+// allowedSchoolEmail restricts accounts to this school's email shape:
+// <4-digit year><4-digit id>@hanilgo.cnehs.kr (e.g. 20260001@hanilgo.cnehs.kr).
+// A token for any other email, including a real hanilgo.cnehs.kr address
+// with a different local-part shape, is rejected. This is checked as
+// written at the email the account was registered with (Firebase's
+// email/password provider here, not a third-party identity provider) -
+// email ownership is intentionally not verified; see registerFirebaseAccount.
 var allowedSchoolEmail = regexp.MustCompile(`^2026\d{4}@hanilgo\.cnehs\.kr$`)
 
 // firebaseCertsURL serves Google's current public keys for verifying
@@ -150,8 +152,8 @@ type FirebaseIdentity struct {
 // VerifyFirebaseIDToken cryptographically verifies idToken against Google's
 // published Firebase Auth public keys for FirebaseProjectID, then checks
 // the token's email against allowedSchoolEmail. This is the sole trust
-// boundary for Google-based login - a token that fails any of these checks
-// must never be treated as authenticating anyone.
+// boundary for Firebase-based login - a token that fails any of these
+// checks must never be treated as authenticating anyone.
 func VerifyFirebaseIDToken(idToken string) (*FirebaseIdentity, error) {
 	return verifyFirebaseIDToken(idToken, FirebaseProjectID, certCache.get)
 }
@@ -180,7 +182,7 @@ func verifyFirebaseIDToken(idToken, projectID string, lookupKey func(kid string)
 		jwt.WithExpirationRequired(),
 	)
 	if err != nil {
-		return nil, fmt.Errorf("invalid Google sign-in token: %w", err)
+		return nil, fmt.Errorf("invalid sign-in token: %w", err)
 	}
 
 	claims, ok := token.Claims.(jwt.MapClaims)
@@ -193,14 +195,13 @@ func verifyFirebaseIDToken(idToken, projectID string, lookupKey func(kid string)
 		return nil, errors.New("token has no subject")
 	}
 
-	emailVerified, _ := claims["email_verified"].(bool)
-	if !emailVerified {
-		return nil, errors.New("Google account email is not verified")
-	}
-
+	// Deliberately not requiring claims["email_verified"]: this account's
+	// email is never confirmed to actually belong to the registering user
+	// (no verification link is sent) - see registerFirebaseAccount's doc
+	// comment for why that's an accepted tradeoff here.
 	email, _ := claims["email"].(string)
 	if !allowedSchoolEmail.MatchString(email) {
-		return nil, fmt.Errorf("%q is not an allowed school Google account", email)
+		return nil, fmt.Errorf("%q is not an allowed school email", email)
 	}
 
 	return &FirebaseIdentity{UID: sub, Email: email}, nil

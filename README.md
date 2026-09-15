@@ -334,7 +334,7 @@ without installing MySQL/MariaDB locally at all.
 | --- | --- | --- |
 | `dbcacert` | No | Filesystem path to a PEM CA certificate. When set, the database connection uses TLS validated against this CA (see `db.Init` in [`db/db.go`](./db/db.go)). When unset, behavior is **unchanged** - a plain, non-TLS connection, exactly as before this fork's changes. Required for Aiven's project CA (see below). |
 | `PORT` | No | If `addr` is not explicitly set, the server listens on `0.0.0.0:$PORT` instead of the previous hardcoded `0.0.0.0:8001` - this is the environment variable Render (and similar platforms) assign automatically. Setting `addr` explicitly always takes precedence. |
-| `firebaseProjectId` | Only if using Google sign-in | The Firebase project ID (`firebaseConfig.projectId` in the client) that `POST /account/login/google` accepts ID tokens for - see [Google sign-in via Firebase](#google-sign-in-via-firebase) below. Password-based `/account/register` and `/account/login` are disabled unconditionally regardless of this setting. |
+| `firebaseProjectId` | Only if using Firebase sign-in | The Firebase project ID (`firebaseConfig.projectId` in the client) that `POST /account/login/firebase` accepts ID tokens for - see [Email sign-in via Firebase](#email-sign-in-via-firebase) below. Password-based `/account/register` and `/account/login` are disabled unconditionally regardless of this setting. |
 
 All other environment variables (`dbuser`, `dbpass`, `dbproto`, `dbaddr`, `dbname`, `gameurl`, `callbackurl`, `debug`, ...) are unchanged - see [`rogueserver.go`](./rogueserver.go).
 
@@ -367,17 +367,23 @@ temporarily allowing a local `file://` test page (browsers send
 `Origin: null` for those) alongside the real game client without opening
 CORS to everyone. With only one origin configured (the default), behavior
 is unchanged: that origin is always returned. Remove any extra entries
+once you're done testing.
 
-### Google sign-in via Firebase
+### Email sign-in via Firebase
 
-This fork's client authenticates exclusively via Firebase (Google sign-in) -
-password-based accounts (`/account/register`, `/account/login`,
-`/account/changepw`) and Discord sign-in are both disabled server-side
-(they answer `403 Forbidden` unconditionally), not just hidden client-side,
-so this is a real access boundary and not just a UI convenience.
+This fork's client authenticates exclusively via Firebase's email/password
+provider - password-based accounts on this server itself
+(`/account/register`, `/account/login`, `/account/changepw`) and Discord
+sign-in are both disabled server-side (they answer `403 Forbidden`
+unconditionally), not just hidden client-side, so this is a real access
+boundary and not just a UI convenience.
 
-The client sends the Firebase ID token it gets from `signInWithPopup` to
-`POST /account/login/google` (form field `idToken`). The server:
+The client registers with `createUserWithEmailAndPassword` (email, a
+nickname, and a password) or signs in with `signInWithEmailAndPassword`
+(email and password), then sends the resulting Firebase ID token to
+`POST /account/login/firebase` as form field `idToken`, plus `nickname` -
+required only on that account's first-ever login, since that's when this
+server creates the account record. The server:
 
 1. Cryptographically verifies the token's signature against Google's public
    keys for `firebaseProjectId` (see `api/account/firebase.go`) - no
@@ -385,19 +391,21 @@ The client sends the Firebase ID token it gets from `signInWithPopup` to
    ID, since verifying a token only ever needs Google's *public* keys.
 2. Checks the token's `email` against an allow-list pattern hardcoded in
    `allowedSchoolEmail` (`api/account/firebase.go`) - currently
-   `2026####@hanilgo.cnehs.kr`. A token for any other Google account,
-   including a real `hanilgo.cnehs.kr` account with a different local-part
-   shape, is rejected. Update that regex if the school or the allowed ID
-   shape changes.
-3. Logs into the account already linked to that Google account (via a
-   `firebaseUid` column on `accounts`), or auto-registers one on a first
-   sign-in - a fresh Google sign-in and a first-time registration are the
-   same action for this login method.
+   `2026####@hanilgo.cnehs.kr`. A token for any other email, including a
+   real `hanilgo.cnehs.kr` address with a different local-part shape, is
+   rejected. Update that regex if the school or the allowed ID shape
+   changes. This server does **not** require Firebase's email verification
+   (`email_verified`) - it only checks the email's shape, not that the
+   registering user actually owns it; see `registerFirebaseAccount`'s doc
+   comment in `api/account/firebase_login.go` for why that's an accepted
+   tradeoff here.
+3. Logs into the account already linked to that Firebase account (via a
+   `firebaseUid` column on `accounts`), or - on a first sign-in - registers
+   one using the given `nickname` as its username.
 
 Set `firebaseProjectId` to the client's `firebaseConfig.projectId`. Leaving
-it unset disables Google sign-in (every token fails verification), it does
-**not** fall back to allowing password-based accounts.
-once you're done testing.
+it unset disables Firebase sign-in (every token fails verification), it
+does **not** fall back to allowing password-based accounts.
 
 ## Podman/Docker Mini Primer
 

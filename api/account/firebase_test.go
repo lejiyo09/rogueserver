@@ -170,13 +170,16 @@ func TestVerifyFirebaseIDToken(t *testing.T) {
 		}
 	})
 
-	t.Run("EmailNotVerified", func(t *testing.T) {
+	t.Run("UnverifiedEmailIsAllowed", func(t *testing.T) {
+		// Deliberate: this server never confirms email ownership (no
+		// verification link is sent) - see registerFirebaseAccount's doc
+		// comment. Only the email shape/domain is checked.
 		unverified := false
 		tokenStr := signTestToken(t, key, testTokenClaims{emailVerified: &unverified})
 
 		_, err := verifyFirebaseIDToken(tokenStr, testProjectID, lookupKey)
-		if err == nil {
-			t.Fatal("expected an error for an unverified email")
+		if err != nil {
+			t.Errorf("expected an unverified email to be allowed, got error: %s", err)
 		}
 	})
 
