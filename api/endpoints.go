@@ -165,7 +165,13 @@ func handleAccountInfo(w http.ResponseWriter, r *http.Request) {
 		hasAdminRole, _ = account.Discord.IsUserDiscordAdmin(discordId, account.DiscordGuildID)
 	}
 
-	response, err := account.Info(db.Store, username, discordId, googleId, uuid, hasAdminRole)
+	cheatsEnabled, err := db.Store.FetchCheatsEnabledByUsername(username)
+	if err != nil {
+		httpError(w, r, err, http.StatusInternalServerError)
+		return
+	}
+
+	response, err := account.Info(db.Store, username, discordId, googleId, uuid, hasAdminRole, cheatsEnabled)
 	if err != nil {
 		httpError(w, r, err, http.StatusInternalServerError)
 		return

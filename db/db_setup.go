@@ -91,6 +91,7 @@ type column struct {
 
 var columns = []column{
 	{"firebaseUid", "accounts", "VARCHAR(32) UNIQUE DEFAULT NULL"},
+	{"cheatsEnabled", "accounts", "TINYINT(1) NOT NULL DEFAULT 0"},
 }
 
 // addColumnIfNotExists adds the named column only if it doesn't already
@@ -131,7 +132,8 @@ func setupDb(tx *sql.Tx) error {
 		       secretId SMALLINT(5) UNSIGNED DEFAULT 0,
 		       discordId VARCHAR(32) UNIQUE DEFAULT NULL,
 		       googleId VARCHAR(32) UNIQUE DEFAULT NULL,
-		       firebaseUid VARCHAR(32) UNIQUE DEFAULT NULL
+		       firebaseUid VARCHAR(32) UNIQUE DEFAULT NULL,
+		       cheatsEnabled TINYINT(1) NOT NULL DEFAULT 0
 	       )`,
 
 		`CREATE TABLE IF NOT EXISTS sessions (

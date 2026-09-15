@@ -27,6 +27,7 @@ import (
 type fakeFirebaseStore struct {
 	usernamesByUid map[string]string
 	sessions       map[string][]byte
+	cheatsEnabled  map[string]bool
 
 	lookupErr error // if set, FetchUsernameByFirebaseUid always returns this
 	addErr    error // if set, AddFirebaseAccountRecord always returns this
@@ -36,6 +37,7 @@ func newFakeFirebaseStore() *fakeFirebaseStore {
 	return &fakeFirebaseStore{
 		usernamesByUid: map[string]string{},
 		sessions:       map[string][]byte{},
+		cheatsEnabled:  map[string]bool{},
 	}
 }
 
@@ -60,6 +62,11 @@ func (s *fakeFirebaseStore) AddFirebaseAccountRecord(uuid []byte, username strin
 
 func (s *fakeFirebaseStore) AddAccountSession(username string, token []byte) error {
 	s.sessions[username] = token
+	return nil
+}
+
+func (s *fakeFirebaseStore) SetCheatsEnabledByUsername(username string, enabled bool) error {
+	s.cheatsEnabled[username] = enabled
 	return nil
 }
 
@@ -92,6 +99,48 @@ func TestLoginWithIdentity(t *testing.T) {
 		}
 		if got := store.usernamesByUid["new-uid"]; got != "newNickname" {
 			t.Errorf("username registered for new-uid = %q, want %q", got, "newNickname")
+		}
+	})
+
+	t.Run("CheatAccountEmailEnablesCheats", func(t *testing.T) {
+		store := newFakeFirebaseStore()
+
+		_, err := loginWithIdentity(store, &FirebaseIdentity{UID: "cheat-uid", Email: cheatAccountEmail}, "cheater")
+		if err != nil {
+			t.Fatalf("expected success, got error: %s", err)
+		}
+		if !store.cheatsEnabled["cheater"] {
+			t.Error("expected cheatsEnabled to be set for the designated cheat account email")
+		}
+	})
+
+	t.Run("OrdinarySchoolEmailDoesNotEnableCheats", func(t *testing.T) {
+		store := newFakeFirebaseStore()
+
+		_, err := loginWithIdentity(store, &FirebaseIdentity{UID: "new-uid", Email: "20260002@hanilgo.cnehs.kr"}, "newNickname")
+		if err != nil {
+			t.Fatalf("expected success, got error: %s", err)
+		}
+		if store.cheatsEnabled["newNickname"] {
+			t.Error("expected cheatsEnabled to stay false for an ordinary school email")
+		}
+	})
+
+	t.Run("CheatFlagIsRevokedIfTheAccountsEmailNoLongerMatches", func(t *testing.T) {
+		// Simulates a returning login recomputing (not just initializing) the
+		// flag: an account previously marked cheatsEnabled=true (e.g. by hand,
+		// or from an earlier cheatAccountEmail value) loses it the moment its
+		// Firebase identity's email no longer matches the current constant.
+		store := newFakeFirebaseStore()
+		store.usernamesByUid["existing-uid"] = "existingNickname"
+		store.cheatsEnabled["existingNickname"] = true
+
+		_, err := loginWithIdentity(store, &FirebaseIdentity{UID: "existing-uid", Email: "20260001@hanilgo.cnehs.kr"}, "")
+		if err != nil {
+			t.Fatalf("expected success, got error: %s", err)
+		}
+		if store.cheatsEnabled["existingNickname"] {
+			t.Error("expected cheatsEnabled to be revoked once the email no longer matches")
 		}
 	})
 

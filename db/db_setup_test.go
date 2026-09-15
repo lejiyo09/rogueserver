@@ -209,4 +209,14 @@ func TestSetupDbAddsMissingColumnToExistingTable(t *testing.T) {
 	if count == 0 {
 		t.Error("firebaseUid column was not added to a pre-existing accounts table")
 	}
+
+	err = handle.QueryRow(
+		`SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'accounts' AND column_name = 'cheatsEnabled'`,
+	).Scan(&count)
+	if err != nil {
+		t.Fatalf("failed to verify cheatsEnabled column: %s", err)
+	}
+	if count == 0 {
+		t.Error("cheatsEnabled column was not added to a pre-existing accounts table")
+	}
 }

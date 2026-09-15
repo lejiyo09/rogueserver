@@ -359,6 +359,25 @@ func (s *store) AddFirebaseAccountRecord(uuid []byte, username string, key, salt
 	return nil
 }
 
+func (s *store) SetCheatsEnabledByUsername(username string, enabled bool) error {
+	_, err := handle.Exec("UPDATE accounts SET cheatsEnabled = ? WHERE username = ?", enabled, username)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (s *store) FetchCheatsEnabledByUsername(username string) (bool, error) {
+	var enabled bool
+	err := handle.QueryRow("SELECT cheatsEnabled FROM accounts WHERE username = ?", username).Scan(&enabled)
+	if err != nil {
+		return false, err
+	}
+
+	return enabled, nil
+}
+
 func (s *store) FetchTrainerIds(uuid []byte) (trainerId, secretId int, err error) {
 	err = handle.QueryRow("SELECT trainerId, secretId FROM accounts WHERE uuid = ?", uuid).Scan(&trainerId, &secretId)
 	if err != nil {
