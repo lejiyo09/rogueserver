@@ -289,6 +289,36 @@ func handleCollectionUpsert(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
+func handlePvpRankings(w http.ResponseWriter, r *http.Request) {
+	page := 1
+	if r.URL.Query().Has("page") {
+		var err error
+		page, err = strconv.Atoi(r.URL.Query().Get("page"))
+		if err != nil {
+			httpError(w, r, fmt.Errorf("failed to convert page: %s", err), http.StatusBadRequest)
+			return
+		}
+	}
+
+	rankings, err := pvp.Rankings(db.Store, page)
+	if err != nil {
+		httpError(w, r, err, http.StatusInternalServerError)
+		return
+	}
+
+	writeJSON(w, r, rankings)
+}
+
+func handlePvpRankingPageCount(w http.ResponseWriter, r *http.Request) {
+	count, err := pvp.RankingPageCount(db.Store)
+	if err != nil {
+		httpError(w, r, err, http.StatusInternalServerError)
+		return
+	}
+
+	fmt.Fprint(w, count)
+}
+
 func handleSession(w http.ResponseWriter, r *http.Request) {
 	uuid, err := uuidFromRequest(r)
 	if err != nil {

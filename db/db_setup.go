@@ -214,6 +214,16 @@ func setupDb(tx *sql.Tx) error {
 		       PRIMARY KEY (uuid, pokemonUid),
 		       FOREIGN KEY (uuid) REFERENCES accounts (uuid) ON DELETE CASCADE ON UPDATE CASCADE
 	       )`,
+
+		// PvP win/loss record backing the lobby's ranking list.
+		// See docs/pvp-progression-design.md §9.2 (pokerogue repo).
+		`CREATE TABLE IF NOT EXISTS pvpRecords (
+		       uuid BINARY(16) NOT NULL PRIMARY KEY,
+		       wins INT(11) NOT NULL DEFAULT 0,
+		       losses INT(11) NOT NULL DEFAULT 0,
+		       timestamp TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		       FOREIGN KEY (uuid) REFERENCES accounts (uuid) ON DELETE CASCADE ON UPDATE CASCADE
+	       )`,
 	}
 
 	// Conditionally add systemSaveData table if AWS_ENDPOINT_URL_S3 is not set

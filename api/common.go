@@ -55,6 +55,8 @@ func Init(mux *http.ServeMux) error {
 	// pvp
 	mux.HandleFunc("GET /pvp/collection", handleCollectionGet)
 	mux.HandleFunc("POST /pvp/collection", handleCollectionUpsert)
+	mux.HandleFunc("GET /pvp/rankings", handlePvpRankings)
+	mux.HandleFunc("GET /pvp/rankingpagecount", handlePvpRankingPageCount)
 
 	// savedata
 	mux.HandleFunc("/savedata/session/{action}", handleSession)
