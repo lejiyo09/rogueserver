@@ -157,6 +157,21 @@ type DailyConfig interface{}
 
 type PokemonData interface{}
 
+// BankedPokemonData is one individual permanently banked into a player's
+// PvP Global Pokémon Collection (docs/pvp-progression-design.md §2 in the
+// pokerogue repo). Like PokemonData, the individual's own data is passed
+// through opaquely - the server does not need to understand its shape,
+// only store and return it.
+type BankedPokemonData struct {
+	// Uid is a client-generated identifier stable across repeated syncs of
+	// the same individual, used to upsert rather than duplicate a record.
+	Uid             string      `json:"uid"`
+	Data            PokemonData `json:"data"`
+	OriginRunSeed   string      `json:"originRunSeed"`
+	OriginTimestamp int64       `json:"originTimestamp"`
+	PveLevel        int         `json:"pveLevel"`
+}
+
 type PersistentModifierData interface{}
 
 type ArenaData interface{}

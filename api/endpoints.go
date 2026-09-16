@@ -31,6 +31,7 @@ import (
 
 	"github.com/pagefaultgames/rogueserver/api/account"
 	"github.com/pagefaultgames/rogueserver/api/daily"
+	"github.com/pagefaultgames/rogueserver/api/pvp"
 	"github.com/pagefaultgames/rogueserver/api/savedata"
 	"github.com/pagefaultgames/rogueserver/db"
 	"github.com/pagefaultgames/rogueserver/defs"
@@ -244,6 +245,48 @@ func handleGameTitleStats(w http.ResponseWriter, r *http.Request) {
 
 func handleGameClassicSessionCount(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprint(w, classicSessionCount)
+}
+
+// pvp
+func handleCollectionGet(w http.ResponseWriter, r *http.Request) {
+	uuid, err := uuidFromRequest(r)
+	if err != nil {
+		httpError(w, r, err, http.StatusUnauthorized)
+		return
+	}
+
+	entries, err := pvp.ListCollection(db.Store, uuid)
+	if err != nil {
+		httpError(w, r, fmt.Errorf("failed to read collection: %s", err), http.StatusInternalServerError)
+		return
+	}
+
+	writeJSON(w, r, entries)
+}
+
+func handleCollectionUpsert(w http.ResponseWriter, r *http.Request) {
+	uuid, err := uuidFromRequest(r)
+	if err != nil {
+		httpError(w, r, err, http.StatusUnauthorized)
+		return
+	}
+
+	var body struct {
+		Entries []defs.BankedPokemonData `json:"entries"`
+	}
+	err = json.NewDecoder(r.Body).Decode(&body)
+	if err != nil {
+		httpError(w, r, fmt.Errorf("failed to decode request body: %s", err), http.StatusBadRequest)
+		return
+	}
+
+	err = pvp.UpsertCollection(db.Store, uuid, body.Entries)
+	if err != nil {
+		httpError(w, r, fmt.Errorf("failed to update collection: %s", err), http.StatusBadRequest)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
 }
 
 func handleSession(w http.ResponseWriter, r *http.Request) {
