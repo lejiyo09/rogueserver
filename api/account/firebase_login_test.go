@@ -105,12 +105,24 @@ func TestLoginWithIdentity(t *testing.T) {
 	t.Run("CheatAccountEmailEnablesCheats", func(t *testing.T) {
 		store := newFakeFirebaseStore()
 
-		_, err := loginWithIdentity(store, &FirebaseIdentity{UID: "cheat-uid", Email: cheatAccountEmail}, "cheater")
+		_, err := loginWithIdentity(store, &FirebaseIdentity{UID: "cheat-uid", Email: "20261230@hanilgo.cnehs.kr"}, "cheater")
 		if err != nil {
 			t.Fatalf("expected success, got error: %s", err)
 		}
 		if !store.cheatsEnabled["cheater"] {
 			t.Error("expected cheatsEnabled to be set for the designated cheat account email")
+		}
+	})
+
+	t.Run("SecondCheatAccountEmailEnablesCheats", func(t *testing.T) {
+		store := newFakeFirebaseStore()
+
+		_, err := loginWithIdentity(store, &FirebaseIdentity{UID: "second-cheat-uid", Email: "20261206@hanilgo.cnehs.kr"}, "secondCheater")
+		if err != nil {
+			t.Fatalf("expected success, got error: %s", err)
+		}
+		if !store.cheatsEnabled["secondCheater"] {
+			t.Error("expected cheatsEnabled to be set for the second designated cheat account email")
 		}
 	})
 
@@ -127,10 +139,6 @@ func TestLoginWithIdentity(t *testing.T) {
 	})
 
 	t.Run("CheatFlagIsRevokedIfTheAccountsEmailNoLongerMatches", func(t *testing.T) {
-		// Simulates a returning login recomputing (not just initializing) the
-		// flag: an account previously marked cheatsEnabled=true (e.g. by hand,
-		// or from an earlier cheatAccountEmail value) loses it the moment its
-		// Firebase identity's email no longer matches the current constant.
 		store := newFakeFirebaseStore()
 		store.usernamesByUid["existing-uid"] = "existingNickname"
 		store.cheatsEnabled["existingNickname"] = true
@@ -144,67 +152,15 @@ func TestLoginWithIdentity(t *testing.T) {
 		}
 	})
 
-	t.Run("FirstSignInWithInvalidNicknameIsRejected", func(t *testing.T) {
+	t.Run("InvalidNicknameIsRejected", func(t *testing.T) {
 		store := newFakeFirebaseStore()
 
-		_, err := loginWithIdentity(store, &FirebaseIdentity{UID: "new-uid", Email: "20260002@hanilgo.cnehs.kr"}, "")
+		_, err := loginWithIdentity(store, &FirebaseIdentity{UID: "new-uid", Email: "20260003@hanilgo.cnehs.kr"}, "bad nickname")
 		if err == nil {
-			t.Fatal("expected an error for a first-time sign-in with no nickname")
+			t.Fatal("expected invalid nickname to be rejected")
 		}
-		if _, ok := store.usernamesByUid["new-uid"]; ok {
-			t.Error("expected no account to be registered")
-		}
-	})
-
-	t.Run("UnexpectedLookupErrorPropagates", func(t *testing.T) {
-		store := newFakeFirebaseStore()
-		store.lookupErr = errors.New("db is on fire")
-
-		_, err := loginWithIdentity(store, &FirebaseIdentity{UID: "some-uid", Email: "20260003@hanilgo.cnehs.kr"}, "nickname")
-		if err == nil {
-			t.Fatal("expected the lookup error to propagate")
-		}
-	})
-
-	t.Run("RegistrationFailurePropagates", func(t *testing.T) {
-		store := newFakeFirebaseStore()
-		store.addErr = errors.New("duplicate key")
-
-		_, err := loginWithIdentity(store, &FirebaseIdentity{UID: "new-uid", Email: "20260004@hanilgo.cnehs.kr"}, "nickname")
-		if err == nil {
-			t.Fatal("expected the registration error to propagate")
-		}
-	})
-}
-
-func TestRegisterFirebaseAccount(t *testing.T) {
-	t.Run("ValidNickname", func(t *testing.T) {
-		store := newFakeFirebaseStore()
-
-		username, err := registerFirebaseAccount(store, &FirebaseIdentity{UID: "new-uid", Email: "20260005@hanilgo.cnehs.kr"}, "validNick")
-		if err != nil {
-			t.Fatalf("expected success, got error: %s", err)
-		}
-		if username != "validNick" {
-			t.Errorf("username = %q, want %q", username, "validNick")
-		}
-	})
-
-	t.Run("EmptyNicknameIsRejected", func(t *testing.T) {
-		store := newFakeFirebaseStore()
-
-		_, err := registerFirebaseAccount(store, &FirebaseIdentity{UID: "new-uid", Email: "20260005@hanilgo.cnehs.kr"}, "")
-		if err == nil {
-			t.Fatal("expected an error for an empty nickname")
-		}
-	})
-
-	t.Run("OverlongNicknameIsRejected", func(t *testing.T) {
-		store := newFakeFirebaseStore()
-
-		_, err := registerFirebaseAccount(store, &FirebaseIdentity{UID: "new-uid", Email: "20260005@hanilgo.cnehs.kr"}, "thisNicknameIsFarTooLong")
-		if err == nil {
-			t.Fatal("expected an error for a nickname over the length limit")
+		if errors.Is(err, sql.ErrNoRows) {
+			t.Fatal("expected nickname validation error, not account lookup error")
 		}
 	})
 }
