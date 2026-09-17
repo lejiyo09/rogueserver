@@ -8,11 +8,11 @@
 
 	This program is distributed in the hope that it will be useful,
 	but WITHOUT ANY WARRANTY; without even the implied warranty of
-	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 	GNU Affero General Public License for more details.
 
 	You should have received a copy of the GNU Affero General Public License
-	along with this program.  If not, see <http://www.gnu.org/licenses/>.
+	along with this program. If not, see <http://www.gnu.org/licenses/>.
 */
 
 package account
@@ -52,7 +52,6 @@ var allowedSchoolEmail = regexp.MustCompile(`^2026\d{4}@hanilgo\.cnehs\.kr$`)
 // cheatsEnabled flag to match this list on every login.
 var cheatAccountEmails = []string{
 	"20261230@hanilgo.cnehs.kr",
-	"20261206@hanilgo.cnehs.kr",
 }
 
 func isCheatAccountEmail(email string) bool {
@@ -71,11 +70,9 @@ const firebaseCertsURL = "https://www.googleapis.com/service_accounts/v1/metadat
 
 const certCacheTTL = time.Hour
 
-// firebaseCertCache caches Google's public certs so a normal login doesn't
-// need a network round trip of its own; refreshed at most once per certCacheTTL.
 type firebaseCertCache struct {
-	mu      sync.RWMutex
-	keys    map[string]*rsa.PublicKey
+	mu sync.RWMutex
+	keys map[string]*rsa.PublicKey
 	fetched time.Time
 }
 
@@ -93,8 +90,6 @@ func (c *firebaseCertCache) get(kid string) (*rsa.PublicKey, error) {
 
 	if err := c.refresh(); err != nil {
 		if ok {
-			// Serve the stale-but-still-known key rather than fail a login
-			// outright over a transient refresh error.
 			return key, nil
 		}
 		return nil, err
@@ -161,24 +156,15 @@ func parseRSAPublicKeyFromCertPEM(certPEM string) (*rsa.PublicKey, error) {
 	return key, nil
 }
 
-// FirebaseIdentity is the verified identity extracted from a Firebase ID token.
 type FirebaseIdentity struct {
-	UID   string
+	UID string
 	Email string
 }
 
-// VerifyFirebaseIDToken cryptographically verifies idToken against Google's
-// published Firebase Auth public keys for FirebaseProjectID, then checks
-// the token's email against allowedSchoolEmail. This is the sole trust
-// boundary for Firebase-based login - a token that fails any of these
-// checks must never be treated as authenticating anyone.
 func VerifyFirebaseIDToken(idToken string) (*FirebaseIdentity, error) {
 	return verifyFirebaseIDToken(idToken, FirebaseProjectID, certCache.get)
 }
 
-// verifyFirebaseIDToken is the testable core of VerifyFirebaseIDToken, with
-// the public-key lookup injected so tests can verify against a key pair
-// they control instead of Google's real, live endpoint.
 func verifyFirebaseIDToken(idToken, projectID string, lookupKey func(kid string) (*rsa.PublicKey, error)) (*FirebaseIdentity, error) {
 	if projectID == "" {
 		return nil, errors.New("firebase project id is not configured")
@@ -213,10 +199,6 @@ func verifyFirebaseIDToken(idToken, projectID string, lookupKey func(kid string)
 		return nil, errors.New("token has no subject")
 	}
 
-	// Deliberately not requiring claims["email_verified"]: this account's
-	// email is never confirmed to actually belong to the registering user
-	// (no verification link is sent) - see registerFirebaseAccount's doc
-	// comment for why that's an accepted tradeoff here.
 	email, _ := claims["email"].(string)
 	if !allowedSchoolEmail.MatchString(email) {
 		return nil, fmt.Errorf("%q is not an allowed school email", email)
