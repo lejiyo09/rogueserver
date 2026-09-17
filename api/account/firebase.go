@@ -46,12 +46,23 @@ var FirebaseProjectID string
 // email ownership is intentionally not verified; see registerFirebaseAccount.
 var allowedSchoolEmail = regexp.MustCompile(`^2026\d{4}@hanilgo\.cnehs\.kr$`)
 
-// cheatAccountEmail is the single school email allowed full gameplay-cheat
+// cheatAccountEmails are the school emails allowed full gameplay-cheat
 // access (every starter/item unlocked, unlimited money, in-game level/nature
 // editing) - see loginWithIdentity, which resets every account's
-// cheatsEnabled flag to match this on every login, so moving this constant
-// moves the privilege with it.
-const cheatAccountEmail = "20261230@hanilgo.cnehs.kr"
+// cheatsEnabled flag to match this list on every login.
+var cheatAccountEmails = []string{
+	"20261230@hanilgo.cnehs.kr",
+	"20261206@hanilgo.cnehs.kr",
+}
+
+func isCheatAccountEmail(email string) bool {
+	for _, allowed := range cheatAccountEmails {
+		if email == allowed {
+			return true
+		}
+	}
+	return false
+}
 
 // firebaseCertsURL serves Google's current public keys for verifying
 // Firebase Auth ID token signatures, keyed by "kid". See
