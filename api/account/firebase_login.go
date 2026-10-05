@@ -69,10 +69,10 @@ func loginWithIdentity[T LoginWithFirebaseStore](store T, identity *FirebaseIden
 		}
 	}
 
-	// Recomputed on every login (not just registration) so moving
-	// cheatAccountEmail to a different address takes effect on that
-	// account's very next login, with no migration/backfill needed.
-	if err := store.SetCheatsEnabledByUsername(username, identity.Email == cheatAccountEmail); err != nil {
+	// Recomputed on every login so both designated cheat accounts are
+	// granted access immediately, while any account that no longer matches
+	// the allow-list is revoked on its next login.
+	if err := store.SetCheatsEnabledByUsername(username, isCheatAccountEmail(identity.Email)); err != nil {
 		return response, fmt.Errorf("failed to update cheat access: %s", err)
 	}
 
