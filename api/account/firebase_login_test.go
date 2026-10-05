@@ -114,15 +114,17 @@ func TestLoginWithIdentity(t *testing.T) {
 		}
 	})
 
-	t.Run("SecondCheatAccountEmailEnablesCheats", func(t *testing.T) {
+	t.Run("RevokedCheatAccountEmailDoesNotEnableCheats", func(t *testing.T) {
+		// 20261206@hanilgo.cnehs.kr was a designated cheat account email until its
+		// access was revoked (see "Revoke cheat access from 20261206 account").
 		store := newFakeFirebaseStore()
 
-		_, err := loginWithIdentity(store, &FirebaseIdentity{UID: "second-cheat-uid", Email: "20261206@hanilgo.cnehs.kr"}, "secondCheater")
+		_, err := loginWithIdentity(store, &FirebaseIdentity{UID: "revoked-cheat-uid", Email: "20261206@hanilgo.cnehs.kr"}, "revokedCheater")
 		if err != nil {
 			t.Fatalf("expected success, got error: %s", err)
 		}
-		if !store.cheatsEnabled["secondCheater"] {
-			t.Error("expected cheatsEnabled to be set for the second designated cheat account email")
+		if store.cheatsEnabled["revokedCheater"] {
+			t.Error("expected cheatsEnabled to stay unset for the revoked cheat account email")
 		}
 	})
 
