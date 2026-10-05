@@ -203,6 +203,27 @@ func setupDb(tx *sql.Tx) error {
 		       clientSessionId VARCHAR(32) NOT NULL,
 		       FOREIGN KEY (uuid) REFERENCES accounts (uuid) ON DELETE CASCADE ON UPDATE CASCADE
 	       )`,
+
+		// PvP Global Pokémon Collection - one row per permanently banked individual.
+		// See docs/pvp-progression-design.md §2 (pokerogue repo).
+		`CREATE TABLE IF NOT EXISTS bankedPokemon (
+		       uuid BINARY(16) NOT NULL,
+		       pokemonUid VARCHAR(36) NOT NULL,
+		       data LONGBLOB NOT NULL,
+		       timestamp TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		       PRIMARY KEY (uuid, pokemonUid),
+		       FOREIGN KEY (uuid) REFERENCES accounts (uuid) ON DELETE CASCADE ON UPDATE CASCADE
+	       )`,
+
+		// PvP win/loss record backing the lobby's ranking list.
+		// See docs/pvp-progression-design.md §9.2 (pokerogue repo).
+		`CREATE TABLE IF NOT EXISTS pvpRecords (
+		       uuid BINARY(16) NOT NULL PRIMARY KEY,
+		       wins INT(11) NOT NULL DEFAULT 0,
+		       losses INT(11) NOT NULL DEFAULT 0,
+		       timestamp TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		       FOREIGN KEY (uuid) REFERENCES accounts (uuid) ON DELETE CASCADE ON UPDATE CASCADE
+	       )`,
 	}
 
 	// Conditionally add systemSaveData table if AWS_ENDPOINT_URL_S3 is not set
